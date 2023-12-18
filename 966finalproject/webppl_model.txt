@@ -1,0 +1,116 @@
+// How many people are interested
+var n_is = [1, 3, 8, 9, 14, 20]
+// Is it a low threshold?
+var low = true
+// Observed values for low
+//var low_vals = [78, 76, 67, 64, 64, 59]
+var low_vals = [0.78, 0.76, 0.67, 0.64, 0.64, 0.59]
+var stress_vals = [0.88, 0.88, 0.5, 0.38, 0.25, 0.25]
+//var low_vals = [0.784, 0.756, 0.670, 0.642, 0.636, 0.585]
+var n = 100
+// Low and high threshold limits
+var threshold = low ? [4, 7] : [10, 13]
+// Observed utility functions of n_i based on threshold
+var high_all_utilities = [36.3, 29.1, 21.2, 16.0, -25, -38.0]
+var low_all_utilities = [31.6, 24.7, -23.8, -27.8, -32.9, -37.7]
+
+// Get the empirical utility function for a given n_i and threshold
+var utility = function(n) {
+  if (n == 0) {
+     return 40
+  }
+  var arr = low ? low_all_utilities: high_all_utilities
+  return arr[n_is.indexOf(n)]
+}
+
+
+var model = function(){
+  var bias = -1.4
+  var k = 5
+  var temp = 0.013
+  
+  // Model 1: Universalization
+  var unif_accept = function(n) {
+    return 1/(1+ Math.exp((temp*(utility(0) - utility(n)) + bias)))
+  }
+  var p_unif = [unif_accept(1), unif_accept(3), unif_accept(8), 
+                unif_accept(9), unif_accept(14), unif_accept(20)]
+  
+  // Model 2: Outcome-based
+  var outcome_accept = function(currNum) {
+    return 1/(1+ Math.exp(temp*(utility(currNum) - utility(currNum + 1)) + bias))
+  }
+  var p_outcome = [outcome_accept(0), outcome_accept(0),outcome_accept(0),
+                   outcome_accept(0),outcome_accept(0),outcome_accept(0)]
+  
+  // Model 3: Pessimistic Outcome
+  var pess_accept = function(n) {
+    var i = n_is.indexOf(n) + 1
+    if (i >= n_is.length) {
+      return 1/(1+ Math.exp(temp*(utility(n) - utility(n)) + bias))
+    }
+    return 1/(1+ Math.exp(temp*(utility(n) - utility(n_is[n_is.indexOf(n) + 1])) + bias))
+   }
+  var p_pess = [pess_accept(1), pess_accept(3),pess_accept(8),
+                   pess_accept(9),pess_accept(14),pess_accept(20)]
+
+  // Model 4: Rule-based
+  var rule_accept = function() {
+    var rule = false
+    var p = 0.2
+    if (rule) {
+      return p
+    } else {
+      return 1 - p
+    }
+  }
+  var p_rule = [rule_accept(), rule_accept(),rule_accept(),
+                   rule_accept(),rule_accept(),rule_accept()]
+  
+  // Model 5: Norm-based
+  var norm_accept = function(n_i, n) {
+    var theta = -1
+    var t = 3
+    return 1/(1+ Math.exp(t*(n_i / n)) + theta)
+  }
+  var p_norm = [norm_accept(1, 20), norm_accept(3, 20), norm_accept(8, 20), 
+                norm_accept(9, 20), norm_accept(14, 20), norm_accept(20, 20)]
+  
+  // Model 6: Almost True
+  //var almost_true_accept = function(i){
+    //return flip(.9) ? low_vals[i] : (flip() ? .1+low_vals[i] : low_vals[i]-.1)
+  //}
+  //var almost_true = [almost_true_accept(0), almost_true_accept(1), almost_true_accept(2),
+  //               almost_true_accept(3), almost_true_accept(4), almost_true_accept(5)]
+  
+  // Model 7: Under Stress
+  var stress_accept = function(n) {
+    var stress_prior = 0.2
+    var t = 0.4
+    var b = 0
+    return stress_prior + 0.8*(1/(1+ Math.exp(t * (n - threshold[1])) + b))
+  }
+  var p_stress = [stress_accept(1), stress_accept(3), stress_accept(8),
+                 stress_accept(9), stress_accept(14), stress_accept(20)]
+ 
+  var hypos = ["unif", "outcome", "pess", "rule", "norm", "stress"]
+  var probs = [p_unif, p_outcome, p_pess, p_rule, p_norm, p_stress]
+  // decision variable for which hypothesis is better
+  var is = _.range([0], 6, [1]) 
+  
+  var m = sample(RandomInteger({n: 6}))
+  var x = hypos[m]
+  var p =  probs[m]
+
+  map(function(i) { observe(Binomial({p: p[i], n: n}), low_vals[i]*n)}, is)
+
+  m
+}
+
+// var modelPosterior = Infer(model)
+// var modelPosterior = map(function(type) { 
+//   Infer({method: 'MCMC', samples: 100000, lag: 1, burn: 0, model: model(type)})},
+//                          [0, 1, 2, 3, 4]);
+var modelPosterior = Infer({method: 'MCMC', samples: 100000, lag: 1, burn: 0, model: model})
+print("Score " + Math.exp(modelPosterior.score(0)))
+viz(modelPosterior)
